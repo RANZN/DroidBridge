@@ -61,19 +61,21 @@ You only need one of the two.
 
 ## Getting started
 
-### 1. Get DroidBridge
+### 1. Install DroidBridge
 
-Ready-made downloads will be published on the [Releases](https://github.com/RANZN/DroidBridge/releases) page. Until then, run it from the source code:
+1. Open the [latest release](https://github.com/RANZN/DroidBridge/releases/latest).
+2. Download the installer for your Mac:
+   - **Apple Silicon (M1 or newer):** `DroidBridge-<version>-macos-arm64.pkg`
+   - **Intel:** `DroidBridge-<version>-macos-x64.pkg`
 
-```bash
-git clone https://github.com/RANZN/DroidBridge.git
-```
+   Not sure which one? Apple menu > About This Mac. "Chip: Apple M..." means Apple Silicon.
+3. Double-click the `.pkg` file and click **Install**. DroidBridge appears in your Applications folder.
 
-```bash
-cd DroidBridge && ./kotlin run -m desktopApp
-```
+Prefer not to use an installer? Download the `.dmg` instead, open it and drag DroidBridge into Applications.
 
-The `./kotlin` script downloads everything it needs the first time, so this first run takes a few minutes.
+**First launch:** DroidBridge is not yet signed with an Apple Developer ID, so macOS may say it cannot verify the developer. Right-click DroidBridge in Applications and choose **Open**, or go to **System Settings > Privacy & Security** and click **Open Anyway**. You only need to do this once.
+
+DroidBridge includes everything it needs to run, so you do not need to install Java.
 
 ### 2. Connect your phone
 
