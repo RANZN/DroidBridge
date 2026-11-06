@@ -91,7 +91,13 @@ for TYPE in pkg dmg; do
         --app-image "$OUT/image/DroidBridge.app" \
         --mac-package-identifier com.ranjan.droidbridge
     FILE="$OUT/DroidBridge-$VERSION-macos-$ARCH.$TYPE"
-    mv "$OUT/DroidBridge-$APP_VERSION.$TYPE" "$FILE"
+    if [[ "$TYPE" == dmg ]]; then
+        # jpackage writes a zlib DMG; LZMA (ULMO, macOS 10.15+) is about 15% smaller.
+        hdiutil convert "$OUT/DroidBridge-$APP_VERSION.dmg" -format ULMO -o "$FILE" -quiet
+        rm "$OUT/DroidBridge-$APP_VERSION.dmg"
+    else
+        mv "$OUT/DroidBridge-$APP_VERSION.$TYPE" "$FILE"
+    fi
     (cd "$OUT" && shasum -a 256 "$(basename "$FILE")" > "$(basename "$FILE").sha256")
     echo "    $FILE"
 done

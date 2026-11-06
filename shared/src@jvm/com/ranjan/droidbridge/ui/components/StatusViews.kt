@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material.icons.filled.UsbOff
+import com.ranjan.droidbridge.ui.icons.Usb
+import com.ranjan.droidbridge.ui.icons.UsbOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme

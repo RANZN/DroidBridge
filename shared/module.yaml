@@ -16,7 +16,7 @@ dependencies:
   - $libs.koin.core: exported
   - $libs.koin.compose
   - $libs.koin.compose.viewmodel
-  - $libs.material.icons.extended
+  - $libs.material.icons.core
 
 dependencies@jvm:
   - $libs.jna

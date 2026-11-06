@@ -13,10 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Upload
+import com.ranjan.droidbridge.ui.icons.Download
+import com.ranjan.droidbridge.ui.icons.Error
+import com.ranjan.droidbridge.ui.icons.Schedule
+import com.ranjan.droidbridge.ui.icons.Upload
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.HorizontalDivider

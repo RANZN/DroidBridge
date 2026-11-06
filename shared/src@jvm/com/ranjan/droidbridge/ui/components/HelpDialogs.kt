@@ -14,9 +14,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.NewReleases
-import androidx.compose.material.icons.filled.PhoneAndroid
+import com.ranjan.droidbridge.ui.icons.Error
+import com.ranjan.droidbridge.ui.icons.NewReleases
+import com.ranjan.droidbridge.ui.icons.PhoneAndroid
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
