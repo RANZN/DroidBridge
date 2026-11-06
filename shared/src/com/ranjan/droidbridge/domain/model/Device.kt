@@ -14,13 +14,3 @@ data class Device(
     val isReady: Boolean
         get() = state == DeviceState.Online
 }
-
-enum class DeviceState {
-    Online,
-    Unauthorized,
-    Offline,
-
-    /** MTP only: another app (Image Capture, Android File Transfer...) holds the device. */
-    Busy,
-    Unknown,
-}

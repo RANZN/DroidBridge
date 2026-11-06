@@ -118,9 +118,6 @@ sealed interface MainIntent {
     data object DismissError : MainIntent
 }
 
-/** How a click changes the selection: plain, Cmd-click, Shift-click. */
-enum class SelectionMode { Replace, Toggle, Range }
-
 sealed interface MainEffect {
     data class ShowMessage(val message: String) : MainEffect
     data class CopyToClipboard(val text: String) : MainEffect

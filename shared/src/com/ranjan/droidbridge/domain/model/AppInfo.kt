@@ -13,11 +13,3 @@ data class AppInfo(
     /** GitHub "owner/repo" whose releases are checked for updates; null disables update checks. */
     val updateRepository: String? = null,
 )
-
-/** The newest published release. */
-data class ReleaseInfo(val version: String, val url: String, val notes: String?)
-
-sealed interface UpdateCheck {
-    data class UpToDate(val currentVersion: String) : UpdateCheck
-    data class Available(val release: ReleaseInfo, val currentVersion: String) : UpdateCheck
-}

@@ -5,9 +5,6 @@ import com.ranjan.droidbridge.domain.model.DeviceState
 import com.ranjan.droidbridge.domain.model.RemoteFile
 import com.ranjan.droidbridge.domain.model.Transport
 
-/** One adb progress line: overall [percent] and the item being copied. */
-data class AdbProgress(val percent: Int, val item: String)
-
 object AdbParsers {
 
     // "[ 45%] /sdcard/file.bin" or, for folders, "[ 35%] /sdcard/dir/b.bin: 71%"

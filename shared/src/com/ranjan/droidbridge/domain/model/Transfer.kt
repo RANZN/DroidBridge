@@ -1,14 +1,5 @@
 package com.ranjan.droidbridge.domain.model
 
-enum class TransferDirection { Push, Pull }
-
-sealed interface TransferStatus {
-    data object Queued : TransferStatus
-    data object Running : TransferStatus
-    data class Completed(val summary: String) : TransferStatus
-    data class Failed(val reason: String) : TransferStatus
-}
-
 /** A single adb push or pull operation. */
 data class Transfer(
     val id: Long,

@@ -8,22 +8,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-data class AdbResult(val exitCode: Int, val stdout: String, val stderr: String) {
-    val isSuccess: Boolean get() = exitCode == 0
-
-    /** Best human-readable error message adb produced. */
-    val errorMessage: String
-        get() {
-            val lines = (stderr.ifBlank { stdout }).lines().map { it.trim() }.filter { it.isNotEmpty() }
-            // adb can print a success summary before the real error, so prefer the error line.
-            return lines.lastOrNull { "error:" in it } ?: lines.lastOrNull() ?: "adb exited with code $exitCode"
-        }
-}
-
-class AdbNotFoundException : IllegalStateException(
-    "adb was not found. Install Android platform-tools (e.g. `brew install android-platform-tools`)."
-)
-
 /** Thin wrapper that runs adb commands as child processes. */
 class AdbClient(locator: AdbLocator) {
     val adbPath: String? = locator.locate()
