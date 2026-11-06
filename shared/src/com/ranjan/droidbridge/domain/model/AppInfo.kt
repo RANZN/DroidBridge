@@ -8,6 +8,8 @@ data class AppInfo(
     val developerRole: String? = null,
     val developerEmail: String? = null,
     val developerWebsite: String? = null,
+    /** GitHub username, linked from About as https://github.com/<username>. */
+    val developerGithub: String? = null,
     /** GitHub "owner/repo" whose releases are checked for updates; null disables update checks. */
     val updateRepository: String? = null,
 )

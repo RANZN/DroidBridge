@@ -56,8 +56,13 @@ fun AboutDialog(info: AppInfo, onOpenLink: (String) -> Unit, onDismiss: () -> Un
                 info.developerRole?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
                     info.developerEmail?.let { email -> TextButton(onClick = { onOpenLink("mailto:$email") }) { Text(email) } }
+                    info.developerGithub?.let { user ->
+                        TextButton(onClick = { onOpenLink("https://github.com/$user") }) { Text("GitHub (@$user)") }
+                    }
                     info.developerWebsite?.let { site -> TextButton(onClick = { onOpenLink(site) }) { Text("Website") } }
-                    info.updateRepository?.let { repo -> TextButton(onClick = { onOpenLink("https://github.com/$repo") }) { Text("GitHub") } }
+                    info.updateRepository?.let { repo ->
+                        TextButton(onClick = { onOpenLink("https://github.com/$repo") }) { Text("Source code") }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(

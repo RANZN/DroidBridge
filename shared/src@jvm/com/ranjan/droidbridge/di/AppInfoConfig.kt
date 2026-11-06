@@ -13,5 +13,6 @@ val DroidBridgeAppInfo = AppInfo(
     developerRole = "Android and macOS developer",
     developerEmail = null,
     developerWebsite = null,
-    updateRepository = null, // e.g. "your-github-user/DroidBridge"
+    developerGithub = "RANZN",
+    updateRepository = "RANZN/DroidBridge",
 )
