@@ -10,37 +10,52 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,14 +72,17 @@ import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.DragAndDropTransferable
 import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.dragData
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ranjan.adbsend.domain.model.FileViewMode
 import com.ranjan.adbsend.domain.model.RemoteFile
 import com.ranjan.adbsend.domain.usecase.RemotePaths
 import com.ranjan.adbsend.presentation.main.MainIntent
@@ -73,16 +91,18 @@ import com.ranjan.adbsend.ui.StagedFilesTransferable
 import com.ranjan.adbsend.ui.formatDate
 import com.ranjan.adbsend.ui.formatSize
 import com.ranjan.adbsend.ui.pickDirectory
+import com.ranjan.adbsend.ui.pickFiles
 import kotlinx.coroutines.Deferred
 import java.io.File
 import java.net.URI
 
 /**
- * Device file browser.
+ * Device file browser (list or grid).
  * - Drop files/folders from Finder anywhere on it -> adb push into the current folder.
- * - Drag rows out to Finder -> adb pull (staged to a temp folder, then copied by Finder).
+ * - Drag items out to Finder -> adb pull (staged to a temp folder, then copied by Finder).
+ * - Right-click (or Ctrl-click) an item or empty space for more options.
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun FileBrowser(
     state: MainState,
@@ -110,19 +130,30 @@ fun FileBrowser(
         }
     }
 
+    val itemDragData: (RemoteFile, Boolean) -> DragAndDropTransferData = { file, selected ->
+        val files = if (selected) state.selectedFiles else listOf(file)
+        isDraggingOut = true
+        DragAndDropTransferData(
+            transferable = DragAndDropTransferable(StagedFilesTransferable(prepareDragOut(files))),
+            supportedActions = listOf(DragAndDropTransferAction.Copy),
+            onTransferCompleted = { isDraggingOut = false },
+        )
+    }
+
     Column(modifier.fillMaxSize()) {
         Toolbar(state, onIntent)
         HorizontalDivider()
         if (state.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Spacer(Modifier.size(4.dp))
 
-        Box(
-            Modifier
+        ContextMenuHost(
+            modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .dragAndDropTarget(
                     shouldStartDragAndDrop = { !isDraggingOut && it.dragData() is DragData.FilesList },
                     target = dropTarget,
-                )
+                ),
+            menu = { BackgroundMenu(state, onIntent) },
         ) {
             when {
                 state.error != null -> MessageView(Icons.Default.FolderOpen, "Cannot open folder", state.error) {
@@ -133,24 +164,21 @@ fun FileBrowser(
                     "This folder is empty",
                     "Drag files or folders from Finder here to copy them to the device.",
                 )
+                state.viewMode == FileViewMode.Grid -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(116.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(state.files, key = { it.path }) { file ->
+                        FileItem(file, state, onIntent, itemDragData) { selected -> GridCell(file, selected) }
+                    }
+                }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     item { HeaderRow() }
                     items(state.files, key = { it.path }) { file ->
-                        val selected = file.path in state.selectedPaths
-                        FileRow(
-                            file = file,
-                            selected = selected,
-                            onIntent = onIntent,
-                            dragData = {
-                                val files = if (selected) state.selectedFiles else listOf(file)
-                                isDraggingOut = true
-                                DragAndDropTransferData(
-                                    transferable = DragAndDropTransferable(StagedFilesTransferable(prepareDragOut(files))),
-                                    supportedActions = listOf(DragAndDropTransferAction.Copy),
-                                    onTransferCompleted = { isDraggingOut = false },
-                                )
-                            },
-                        )
+                        FileItem(file, state, onIntent, itemDragData) { selected -> ListRow(file, selected) }
                     }
                 }
             }
@@ -161,39 +189,98 @@ fun FileBrowser(
     }
 }
 
+/** Shared behaviour for list rows and grid cells: selection, open, drag out, context menu. */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
-private fun FileRow(
+private fun FileItem(
     file: RemoteFile,
-    selected: Boolean,
+    state: MainState,
     onIntent: (MainIntent) -> Unit,
-    dragData: () -> DragAndDropTransferData,
+    dragData: (RemoteFile, Boolean) -> DragAndDropTransferData,
+    content: @Composable (selected: Boolean) -> Unit,
 ) {
     val windowInfo = LocalWindowInfo.current
-    val background = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+    val selected = file.path in state.selectedPaths
+    ContextMenuHost(
+        // Like Finder: right-clicking an unselected item selects it first.
+        onOpen = { if (!selected) onIntent(MainIntent.SelectFile(file.path, additive = false)) },
+        menu = { ItemMenu(state.actionTargets(file), state, onIntent) },
+    ) {
+        Box(
+            Modifier
+                .dragAndDropSource { dragData(file, selected) }
+                .combinedClickable(
+                    onClick = {
+                        val modifiers = windowInfo.keyboardModifiers
+                        onIntent(MainIntent.SelectFile(file.path, additive = modifiers.isMetaPressed || modifiers.isShiftPressed))
+                    },
+                    onDoubleClick = {
+                        if (file.isDirectory) onIntent(MainIntent.OpenDirectory(file.path))
+                    },
+                )
+        ) {
+            content(selected)
+        }
+    }
+}
+
+@Composable
+private fun ContextMenuScope.ItemMenu(targets: List<RemoteFile>, state: MainState, onIntent: (MainIntent) -> Unit) {
+    val single = targets.singleOrNull()
+    val paths = targets.map { it.path }
+    val countLabel = if (single != null) "" else " ${targets.size} items"
+
+    if (single?.isDirectory == true) {
+        MenuItem("Open", Icons.Default.FolderOpen) { onIntent(MainIntent.OpenDirectory(single.path)) }
+        MenuDivider()
+    }
+    MenuItem("Download$countLabel to ${File(state.downloadDirectory).name}", Icons.Default.Download) {
+        onIntent(MainIntent.Download(paths))
+    }
+    MenuItem("Download$countLabel to...", Icons.Default.SaveAlt) {
+        pickDirectory("Download to", state.downloadDirectory)?.let { onIntent(MainIntent.Download(paths, it)) }
+    }
+    MenuDivider()
+    MenuItem("Rename...", Icons.Default.DriveFileRenameOutline, enabled = single != null) {
+        single?.let { onIntent(MainIntent.RequestRename(it.path)) }
+    }
+    MenuItem(if (single != null) "Copy path" else "Copy paths", Icons.Default.ContentCopy) {
+        onIntent(MainIntent.CopyPaths(paths))
+    }
+    MenuDivider()
+    MenuItem("Delete$countLabel...", Icons.Default.Delete, destructive = true) {
+        onIntent(MainIntent.RequestDelete(paths))
+    }
+}
+
+@Composable
+private fun ContextMenuScope.BackgroundMenu(state: MainState, onIntent: (MainIntent) -> Unit) {
+    MenuItem("New folder...", Icons.Default.CreateNewFolder) { onIntent(MainIntent.ShowNewFolderDialog) }
+    MenuItem("Upload files...", Icons.Default.Upload) {
+        val files = pickFiles("Upload to ${state.currentPath}")
+        if (files.isNotEmpty()) onIntent(MainIntent.FilesDropped(files))
+    }
+    MenuItem("Refresh", Icons.Default.Refresh) { onIntent(MainIntent.Refresh) }
+    MenuDivider()
+    if (state.viewMode == FileViewMode.List) {
+        MenuItem("View as grid", Icons.Default.GridView) { onIntent(MainIntent.SetViewMode(FileViewMode.Grid)) }
+    } else {
+        MenuItem("View as list", Icons.AutoMirrored.Filled.ViewList) { onIntent(MainIntent.SetViewMode(FileViewMode.List)) }
+    }
+    MenuItem("Select all", Icons.Default.SelectAll, enabled = state.files.isNotEmpty()) { onIntent(MainIntent.SelectAll) }
+    MenuItem("Copy current path", Icons.Default.ContentCopy) { onIntent(MainIntent.CopyPaths(listOf(state.currentPath))) }
+}
+
+@Composable
+private fun ListRow(file: RemoteFile, selected: Boolean) {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(background)
-            .dragAndDropSource { dragData() }
-            .combinedClickable(
-                onClick = {
-                    val modifiers = windowInfo.keyboardModifiers
-                    onIntent(MainIntent.SelectFile(file.path, additive = modifiers.isMetaPressed || modifiers.isShiftPressed))
-                },
-                onDoubleClick = {
-                    if (file.isDirectory) onIntent(MainIntent.OpenDirectory(file.path))
-                },
-            )
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (file.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-            contentDescription = null,
-            tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
+        FileIcon(file, Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Text(file.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
@@ -212,6 +299,44 @@ private fun FileRow(
 }
 
 @Composable
+private fun GridCell(file: RemoteFile, selected: Boolean) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        FileIcon(file, Modifier.size(52.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(
+            file.name,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.height(34.dp),
+        )
+        Text(
+            if (file.isDirectory) "" else formatSize(file.sizeBytes),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun FileIcon(file: RemoteFile, modifier: Modifier) {
+    Icon(
+        if (file.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+        contentDescription = null,
+        tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun HeaderRow() {
     Row(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)) {
         val style = MaterialTheme.typography.labelSmall
@@ -224,6 +349,7 @@ private fun HeaderRow() {
 
 @Composable
 private fun Toolbar(state: MainState, onIntent: (MainIntent) -> Unit) {
+    val selection = state.selectedPaths.toList()
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -253,11 +379,19 @@ private fun Toolbar(state: MainState, onIntent: (MainIntent) -> Unit) {
         ToolbarButton(
             Icons.Default.Download,
             "Download selected to ${state.downloadDirectory}",
-            enabled = state.selectedPaths.isNotEmpty(),
-        ) { onIntent(MainIntent.DownloadSelected) }
-        ToolbarButton(Icons.Default.Delete, "Delete selected", enabled = state.selectedPaths.isNotEmpty()) {
-            onIntent(MainIntent.RequestDeleteSelected)
+            enabled = selection.isNotEmpty(),
+        ) { onIntent(MainIntent.Download(selection)) }
+        ToolbarButton(Icons.Default.Delete, "Delete selected", enabled = selection.isNotEmpty()) {
+            onIntent(MainIntent.RequestDelete(selection))
         }
+        VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp))
+        ViewModeToggle(Icons.AutoMirrored.Filled.ViewList, "List view", state.viewMode == FileViewMode.List) {
+            onIntent(MainIntent.SetViewMode(FileViewMode.List))
+        }
+        ViewModeToggle(Icons.Default.GridView, "Grid view", state.viewMode == FileViewMode.Grid) {
+            onIntent(MainIntent.SetViewMode(FileViewMode.Grid))
+        }
+        VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp))
         TextButton(onClick = {
             pickDirectory("Choose download folder", state.downloadDirectory)
                 ?.let { onIntent(MainIntent.SetDownloadDirectory(it)) }
@@ -267,17 +401,34 @@ private fun Toolbar(state: MainState, onIntent: (MainIntent) -> Unit) {
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ToolbarButton(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun WithTooltip(label: String, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = { PlainTooltip { Text(label) } },
         state = rememberTooltipState(),
-    ) {
+        content = content,
+    )
+}
+
+@Composable
+private fun ToolbarButton(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) =
+    WithTooltip(label) {
         IconButton(onClick = onClick, enabled = enabled) { Icon(icon, contentDescription = label) }
     }
-}
+
+@Composable
+private fun ViewModeToggle(icon: ImageVector, label: String, checked: Boolean, onClick: () -> Unit) =
+    WithTooltip(label) {
+        IconToggleButton(checked = checked, onCheckedChange = { onClick() }) {
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 
 @Composable
 private fun DropOverlay(path: String) {
@@ -304,7 +455,7 @@ private fun HintBar() {
         horizontalArrangement = Arrangement.Center,
     ) {
         Text(
-            "Drag from Finder to copy to the device  |  Drag files out to Finder to copy to this Mac  |  Cmd-click to select several",
+            "Drag from Finder to copy to the device  |  Drag out to Finder to copy to this Mac  |  Right-click for more options",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

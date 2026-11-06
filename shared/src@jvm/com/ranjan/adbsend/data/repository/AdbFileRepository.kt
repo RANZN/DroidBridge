@@ -31,4 +31,13 @@ class AdbFileRepository(private val adb: AdbClient) : FileRepository {
         val result = adb.shell(serial, "rm -rf ${shellQuote(path)}")
         if (!result.isSuccess || result.stdout.isNotBlank()) error(result.errorMessage)
     }
+
+    override suspend fun rename(serial: String, from: String, to: String): Result<Unit> = runCatching {
+        val target = shellQuote(to)
+        // Never overwrite an existing item silently.
+        val command = "if [ -e $target ]; then echo 'An item with that name already exists' >&2; exit 1; fi; " +
+            "mv ${shellQuote(from)} $target"
+        val result = adb.shell(serial, command)
+        if (!result.isSuccess || result.stdout.isNotBlank()) error(result.errorMessage)
+    }
 }

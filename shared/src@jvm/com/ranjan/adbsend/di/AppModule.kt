@@ -14,6 +14,8 @@ import com.ranjan.adbsend.domain.usecase.ClearFinishedTransfersUseCase
 import com.ranjan.adbsend.domain.usecase.CreateRemoteFolderUseCase
 import com.ranjan.adbsend.domain.usecase.DeleteRemoteFilesUseCase
 import com.ranjan.adbsend.domain.usecase.DownloadDirectoryUseCase
+import com.ranjan.adbsend.domain.usecase.FileViewModeUseCase
+import com.ranjan.adbsend.domain.usecase.RenameRemoteFileUseCase
 import com.ranjan.adbsend.domain.usecase.GetAdbStatusUseCase
 import com.ranjan.adbsend.domain.usecase.ListRemoteFilesUseCase
 import com.ranjan.adbsend.domain.usecase.ObserveDevicesUseCase
@@ -59,6 +61,8 @@ val domainModule = module {
     factoryOf(::ClearFinishedTransfersUseCase)
     factoryOf(::SetupGuidePreferenceUseCase)
     factoryOf(::DownloadDirectoryUseCase)
+    factoryOf(::RenameRemoteFileUseCase)
+    factoryOf(::FileViewModeUseCase)
 }
 
 val presentationModule = module {

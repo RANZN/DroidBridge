@@ -2,6 +2,7 @@ package com.ranjan.adbsend.presentation.main
 
 import com.ranjan.adbsend.domain.model.AdbStatus
 import com.ranjan.adbsend.domain.model.Device
+import com.ranjan.adbsend.domain.model.FileViewMode
 import com.ranjan.adbsend.domain.model.RemoteFile
 import com.ranjan.adbsend.domain.model.Transfer
 import com.ranjan.adbsend.domain.usecase.RemotePaths
@@ -22,6 +23,8 @@ data class MainState(
     val guideStep: Int = 0,
     val isNewFolderDialogVisible: Boolean = false,
     val pendingDelete: List<RemoteFile> = emptyList(),
+    val renameTarget: RemoteFile? = null,
+    val viewMode: FileViewMode = FileViewMode.List,
 ) {
     val selectedDevice: Device? get() = devices.firstOrNull { it.serial == selectedSerial }
     val hasReadyDevice: Boolean get() = devices.any { it.isReady }
@@ -32,6 +35,13 @@ data class MainState(
             (isGuideRequested || (!hasReadyDevice && !isGuideDismissed))
 
     val selectedFiles: List<RemoteFile> get() = files.filter { it.path in selectedPaths }
+
+    /**
+     * Items a context-menu action applies to: the whole selection when the clicked item is part
+     * of it (Finder behaviour), otherwise just the clicked item.
+     */
+    fun actionTargets(clicked: RemoteFile): List<RemoteFile> =
+        if (clicked.path in selectedPaths) selectedFiles else listOf(clicked)
     val activeTransferCount: Int get() = transfers.count { !it.isFinished }
 }
 
@@ -46,11 +56,13 @@ sealed interface MainIntent {
     data class SelectFile(val path: String, val additive: Boolean) : MainIntent
     data object SelectAll : MainIntent
     data object ClearSelection : MainIntent
+    data class SetViewMode(val mode: FileViewMode) : MainIntent
 
     // Transfers
     /** Files/folders dropped from Finder onto the device browser -> adb push. */
     data class FilesDropped(val localPaths: List<String>, val targetDirectory: String? = null) : MainIntent
-    data object DownloadSelected : MainIntent
+    /** adb pull [paths] into [directory], or the saved download folder when null. */
+    data class Download(val paths: List<String>, val directory: String? = null) : MainIntent
     data class SetDownloadDirectory(val path: String) : MainIntent
     data object ClearFinishedTransfers : MainIntent
 
@@ -58,9 +70,13 @@ sealed interface MainIntent {
     data object ShowNewFolderDialog : MainIntent
     data object HideNewFolderDialog : MainIntent
     data class CreateFolder(val name: String) : MainIntent
-    data object RequestDeleteSelected : MainIntent
+    data class RequestDelete(val paths: List<String>) : MainIntent
     data object ConfirmDelete : MainIntent
     data object CancelDelete : MainIntent
+    data class RequestRename(val path: String) : MainIntent
+    data class ConfirmRename(val newName: String) : MainIntent
+    data object CancelRename : MainIntent
+    data class CopyPaths(val paths: List<String>) : MainIntent
 
     // Setup guide
     data object OpenSetupGuide : MainIntent
@@ -72,4 +88,5 @@ sealed interface MainIntent {
 
 sealed interface MainEffect {
     data class ShowMessage(val message: String) : MainEffect
+    data class CopyToClipboard(val text: String) : MainEffect
 }

@@ -1,5 +1,6 @@
 package com.ranjan.adbsend.data.repository
 
+import com.ranjan.adbsend.domain.model.FileViewMode
 import com.ranjan.adbsend.domain.repository.SettingsRepository
 import java.io.File
 import java.util.prefs.Preferences
@@ -17,7 +18,14 @@ class PreferencesSettingsRepository(
             ?: File(System.getProperty("user.home"), "Downloads").absolutePath
         set(value) = prefs.put(KEY_DOWNLOAD_DIR, value)
 
+    override var fileViewMode: FileViewMode
+        get() = prefs.get(KEY_VIEW_MODE, null)
+            ?.let { saved -> FileViewMode.entries.firstOrNull { it.name == saved } }
+            ?: FileViewMode.List
+        set(value) = prefs.put(KEY_VIEW_MODE, value.name)
+
     private companion object {
+        const val KEY_VIEW_MODE = "fileViewMode"
         const val KEY_GUIDE_DISMISSED = "setupGuideDismissed"
         const val KEY_DOWNLOAD_DIR = "downloadDirectory"
     }

@@ -19,6 +19,14 @@ fun pickDirectory(title: String, initial: String?): String? {
     }
 }
 
+/** macOS-native multi-file picker. Returns an empty list if the user cancels. */
+fun pickFiles(title: String): List<String> {
+    val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
+    dialog.isMultipleMode = true
+    dialog.isVisible = true
+    return dialog.files.orEmpty().map { it.absolutePath }
+}
+
 /** Opens Finder with [path] selected. */
 fun revealInFinder(path: String) {
     runCatching { ProcessBuilder("open", "-R", path).start() }

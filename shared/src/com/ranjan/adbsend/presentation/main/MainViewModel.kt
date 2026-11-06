@@ -10,6 +10,8 @@ import com.ranjan.adbsend.domain.usecase.ClearFinishedTransfersUseCase
 import com.ranjan.adbsend.domain.usecase.CreateRemoteFolderUseCase
 import com.ranjan.adbsend.domain.usecase.DeleteRemoteFilesUseCase
 import com.ranjan.adbsend.domain.usecase.DownloadDirectoryUseCase
+import com.ranjan.adbsend.domain.usecase.FileViewModeUseCase
+import com.ranjan.adbsend.domain.usecase.RenameRemoteFileUseCase
 import com.ranjan.adbsend.domain.usecase.GetAdbStatusUseCase
 import com.ranjan.adbsend.domain.usecase.ListRemoteFilesUseCase
 import com.ranjan.adbsend.domain.usecase.ObserveDevicesUseCase
@@ -39,11 +41,14 @@ class MainViewModel(
     private val clearFinishedTransfers: ClearFinishedTransfersUseCase,
     private val setupGuidePreference: SetupGuidePreferenceUseCase,
     private val downloadDirectory: DownloadDirectoryUseCase,
+    private val renameRemoteFile: RenameRemoteFileUseCase,
+    private val fileViewMode: FileViewModeUseCase,
 ) : MviViewModel<MainState, MainIntent, MainEffect>(
     MainState(
         adbStatus = getAdbStatus(),
         isGuideDismissed = setupGuidePreference.isDismissed(),
         downloadDirectory = downloadDirectory.get(),
+        viewMode = fileViewMode.get(),
     )
 ) {
     private var listJob: Job? = null
@@ -70,9 +75,13 @@ class MainViewModel(
             }
             MainIntent.SelectAll -> setState { copy(selectedPaths = files.map { it.path }.toSet()) }
             MainIntent.ClearSelection -> setState { copy(selectedPaths = emptySet()) }
+            is MainIntent.SetViewMode -> {
+                fileViewMode.set(intent.mode)
+                setState { copy(viewMode = intent.mode) }
+            }
 
             is MainIntent.FilesDropped -> push(intent.localPaths, intent.targetDirectory)
-            MainIntent.DownloadSelected -> downloadSelected()
+            is MainIntent.Download -> download(intent.paths, intent.directory)
             is MainIntent.SetDownloadDirectory -> {
                 downloadDirectory.set(intent.path)
                 setState { copy(downloadDirectory = intent.path) }
@@ -82,9 +91,16 @@ class MainViewModel(
             MainIntent.ShowNewFolderDialog -> setState { copy(isNewFolderDialogVisible = true) }
             MainIntent.HideNewFolderDialog -> setState { copy(isNewFolderDialogVisible = false) }
             is MainIntent.CreateFolder -> createFolder(intent.name)
-            MainIntent.RequestDeleteSelected -> setState { copy(pendingDelete = selectedFiles) }
+            is MainIntent.RequestDelete -> setState { copy(pendingDelete = files.filter { it.path in intent.paths }) }
             MainIntent.CancelDelete -> setState { copy(pendingDelete = emptyList()) }
             MainIntent.ConfirmDelete -> deletePending()
+            is MainIntent.RequestRename -> setState { copy(renameTarget = files.firstOrNull { it.path == intent.path }) }
+            MainIntent.CancelRename -> setState { copy(renameTarget = null) }
+            is MainIntent.ConfirmRename -> rename(intent.newName)
+            is MainIntent.CopyPaths -> if (intent.paths.isNotEmpty()) {
+                sendEffect(MainEffect.CopyToClipboard(intent.paths.joinToString("\n")))
+                sendEffect(MainEffect.ShowMessage(if (intent.paths.size == 1) "Path copied" else "${intent.paths.size} paths copied"))
+            }
 
             MainIntent.OpenSetupGuide -> setState { copy(isGuideRequested = true, guideStep = 0) }
             is MainIntent.SkipSetupGuide -> {
@@ -184,11 +200,25 @@ class MainViewModel(
         pushFiles(device.serial, localPaths, targetDirectory ?: currentState.currentPath)
     }
 
-    private fun downloadSelected() {
+    private fun download(paths: List<String>, directory: String?) {
         val serial = currentState.selectedSerial ?: return
-        val selected = currentState.selectedFiles
-        if (selected.isEmpty()) return
-        pullFiles(serial, selected.map { it.path }, currentState.downloadDirectory)
+        if (paths.isEmpty()) return
+        pullFiles(serial, paths, directory ?: currentState.downloadDirectory)
+    }
+
+    private fun rename(newName: String) {
+        val serial = currentState.selectedSerial ?: return
+        val target = currentState.renameTarget ?: return
+        setState { copy(renameTarget = null) }
+        viewModelScope.launch {
+            renameRemoteFile(serial, target.path, newName).fold(
+                onSuccess = { newPath ->
+                    setState { copy(selectedPaths = setOf(newPath)) }
+                    loadDirectory(currentState.currentPath, keepSelection = true)
+                },
+                onFailure = { sendEffect(MainEffect.ShowMessage("Could not rename ${target.name}: ${it.message}")) },
+            )
+        }
     }
 
     private fun createFolder(name: String) {

@@ -26,11 +26,14 @@ import com.ranjan.adbsend.ui.components.FileBrowser
 import com.ranjan.adbsend.ui.components.NewFolderDialog
 import com.ranjan.adbsend.ui.components.NoDevicesView
 import com.ranjan.adbsend.ui.components.OfflineView
+import com.ranjan.adbsend.ui.components.RenameDialog
 import com.ranjan.adbsend.ui.components.SetupGuide
 import com.ranjan.adbsend.ui.components.TransferPanel
 import com.ranjan.adbsend.ui.components.UnauthorizedView
 import com.ranjan.adbsend.ui.theme.AdbSendTheme
 import org.koin.compose.viewmodel.koinViewModel
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 @Composable
 fun AdbSendApp() {
@@ -47,6 +50,8 @@ fun MainScreen(viewModel: MainViewModel = koinViewModel()) {
         viewModel.effects.collect { effect ->
             when (effect) {
                 is MainEffect.ShowMessage -> snackbar.showSnackbar(effect.message)
+                is MainEffect.CopyToClipboard -> Toolkit.getDefaultToolkit().systemClipboard
+                    .setContents(StringSelection(effect.text), null)
             }
         }
     }
@@ -87,6 +92,13 @@ fun MainScreen(viewModel: MainViewModel = koinViewModel()) {
         NewFolderDialog(
             onCreate = { onIntent(MainIntent.CreateFolder(it)) },
             onDismiss = { onIntent(MainIntent.HideNewFolderDialog) },
+        )
+    }
+    state.renameTarget?.let { file ->
+        RenameDialog(
+            file = file,
+            onRename = { onIntent(MainIntent.ConfirmRename(it)) },
+            onDismiss = { onIntent(MainIntent.CancelRename) },
         )
     }
     if (state.pendingDelete.isNotEmpty()) {
