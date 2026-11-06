@@ -1,6 +1,7 @@
 package com.ranjan.adbsend.data.repository
 
 import com.ranjan.adbsend.data.adb.AdbClient
+import com.ranjan.adbsend.domain.util.runSuspendCatching
 import com.ranjan.adbsend.data.adb.AdbParsers
 import com.ranjan.adbsend.domain.model.AdbStatus
 import com.ranjan.adbsend.domain.model.Device
@@ -27,7 +28,7 @@ class AdbDeviceRepository(
         }
         adb.run("start-server")
         while (true) {
-            val result = runCatching { adb.run("devices", "-l") }.getOrNull()
+            val result = runSuspendCatching { adb.run("devices", "-l") }.getOrNull()
             emit(if (result?.isSuccess == true) AdbParsers.parseDevices(result.stdout) else emptyList())
             delay(pollInterval)
         }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +79,17 @@ private fun TransferRow(transfer: Transfer) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val percent = transfer.progressPercent
+            if (transfer.status == TransferStatus.Running) {
+                if (percent != null) {
+                    LinearProgressIndicator(
+                        progress = { percent / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+            }
             Text(
                 statusText(transfer),
                 style = MaterialTheme.typography.bodySmall,
@@ -101,7 +113,12 @@ private fun statusText(transfer: Transfer): String {
     val route = "${transfer.deviceSerial}  ->  ${transfer.destination}"
     return when (val status = transfer.status) {
         TransferStatus.Queued -> "Waiting  |  $route"
-        TransferStatus.Running -> "Copying  |  $route"
+        TransferStatus.Running -> {
+            val percent = transfer.progressPercent?.let { "$it%" } ?: "Starting"
+            // For folders, show which file is being copied.
+            val item = transfer.currentItem?.takeIf { it != RemotePaths.name(transfer.source) }?.let { "  |  $it" } ?: ""
+            "$percent$item  |  $route"
+        }
         is TransferStatus.Completed -> status.summary
         is TransferStatus.Failed -> status.reason
     }
@@ -113,6 +130,7 @@ private fun StatusIcon(status: TransferStatus) {
     when (status) {
         TransferStatus.Queued -> Icon(Icons.Default.Schedule, "Queued", modifier, MaterialTheme.colorScheme.outline)
         TransferStatus.Running -> CircularProgressIndicator(modifier, strokeWidth = 2.dp)
+
         is TransferStatus.Completed -> Icon(Icons.Default.CheckCircle, "Done", modifier, MaterialTheme.colorScheme.primary)
         is TransferStatus.Failed -> Icon(Icons.Default.Error, "Failed", modifier, MaterialTheme.colorScheme.error)
     }

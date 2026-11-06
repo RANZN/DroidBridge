@@ -4,7 +4,19 @@ import com.ranjan.adbsend.domain.model.Device
 import com.ranjan.adbsend.domain.model.DeviceState
 import com.ranjan.adbsend.domain.model.RemoteFile
 
+/** One adb progress line: overall [percent] and the item being copied. */
+data class AdbProgress(val percent: Int, val item: String)
+
 object AdbParsers {
+
+    // "[ 45%] /sdcard/file.bin" or, for folders, "[ 35%] /sdcard/dir/b.bin: 71%"
+    private val progressLine = Regex("""^\[\s*(\d{1,3})%\]\s+(.+?)(?::\s*\d{1,3}%)?$""")
+
+    fun parseProgress(line: String): AdbProgress? {
+        val match = progressLine.matchEntire(line.trim()) ?: return null
+        val percent = match.groupValues[1].toInt().coerceIn(0, 100)
+        return AdbProgress(percent, match.groupValues[2])
+    }
 
     /** Parses the output of `adb devices -l`. */
     fun parseDevices(output: String): List<Device> = output.lineSequence()

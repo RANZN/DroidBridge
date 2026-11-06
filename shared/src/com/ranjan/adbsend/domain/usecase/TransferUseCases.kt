@@ -1,5 +1,6 @@
 package com.ranjan.adbsend.domain.usecase
 
+import com.ranjan.adbsend.domain.model.StagedFile
 import com.ranjan.adbsend.domain.model.Transfer
 import com.ranjan.adbsend.domain.repository.TransferRepository
 import kotlinx.coroutines.flow.StateFlow
@@ -21,8 +22,14 @@ class PullFilesUseCase(private val repository: TransferRepository) {
 }
 
 class StageFileForDragUseCase(private val repository: TransferRepository) {
-    suspend operator fun invoke(serial: String, remotePath: String): Result<String> =
+    suspend operator fun invoke(serial: String, remotePath: String): Result<StagedFile> =
         repository.stageForDrag(serial, remotePath)
+}
+
+class DiscardStagedFilesUseCase(private val repository: TransferRepository) {
+    operator fun invoke(files: List<StagedFile>) {
+        if (files.isNotEmpty()) repository.discardStaged(files)
+    }
 }
 
 class ClearFinishedTransfersUseCase(private val repository: TransferRepository) {

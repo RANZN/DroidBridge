@@ -1,14 +1,17 @@
 package com.ranjan.adbsend.presentation.main
 
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ensureActive
 import com.ranjan.adbsend.domain.model.Device
 import com.ranjan.adbsend.domain.model.RemoteFile
+import com.ranjan.adbsend.domain.model.StagedFile
 import com.ranjan.adbsend.domain.model.Transfer
 import com.ranjan.adbsend.domain.model.TransferDirection
 import com.ranjan.adbsend.domain.model.TransferStatus
 import com.ranjan.adbsend.domain.usecase.ClearFinishedTransfersUseCase
 import com.ranjan.adbsend.domain.usecase.CreateRemoteFolderUseCase
 import com.ranjan.adbsend.domain.usecase.DeleteRemoteFilesUseCase
+import com.ranjan.adbsend.domain.usecase.DiscardStagedFilesUseCase
 import com.ranjan.adbsend.domain.usecase.DownloadDirectoryUseCase
 import com.ranjan.adbsend.domain.usecase.FileViewModeUseCase
 import com.ranjan.adbsend.domain.usecase.RenameRemoteFileUseCase
@@ -22,7 +25,7 @@ import com.ranjan.adbsend.domain.usecase.RemotePaths
 import com.ranjan.adbsend.domain.usecase.SetupGuidePreferenceUseCase
 import com.ranjan.adbsend.domain.usecase.StageFileForDragUseCase
 import com.ranjan.adbsend.presentation.mvi.MviViewModel
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -38,6 +41,7 @@ class MainViewModel(
     private val pushFiles: PushFilesUseCase,
     private val pullFiles: PullFilesUseCase,
     private val stageFileForDrag: StageFileForDragUseCase,
+    private val discardStagedFiles: DiscardStagedFilesUseCase,
     private val clearFinishedTransfers: ClearFinishedTransfersUseCase,
     private val setupGuidePreference: SetupGuidePreferenceUseCase,
     private val downloadDirectory: DownloadDirectoryUseCase,
@@ -65,16 +69,14 @@ class MainViewModel(
             is MainIntent.OpenDirectory -> loadDirectory(intent.path)
             MainIntent.NavigateUp -> RemotePaths.parent(currentState.currentPath)?.let(::loadDirectory)
             MainIntent.Refresh -> loadDirectory(currentState.currentPath, keepSelection = true)
-            is MainIntent.SelectFile -> setState {
-                val newSelection = when {
-                    !intent.additive -> setOf(intent.path)
-                    intent.path in selectedPaths -> selectedPaths - intent.path
-                    else -> selectedPaths + intent.path
-                }
-                copy(selectedPaths = newSelection)
-            }
-            MainIntent.SelectAll -> setState { copy(selectedPaths = files.map { it.path }.toSet()) }
-            MainIntent.ClearSelection -> setState { copy(selectedPaths = emptySet()) }
+            is MainIntent.SelectFile -> setState { SelectionReducer.click(this, intent.path, intent.mode) }
+            MainIntent.SelectAll -> setState { SelectionReducer.selectAll(this) }
+            MainIntent.ClearSelection -> setState { SelectionReducer.clear(this) }
+            is MainIntent.MoveFocus -> setState { SelectionReducer.move(this, intent.delta, intent.extend) }
+            is MainIntent.MoveFocusToEdge -> setState { SelectionReducer.edge(this, intent.toEnd, intent.extend) }
+            MainIntent.OpenFocused -> currentState.files
+                .firstOrNull { it.path == currentState.focusedPath && it.isDirectory }
+                ?.let { loadDirectory(it.path) }
             is MainIntent.SetViewMode -> {
                 fileViewMode.set(intent.mode)
                 setState { copy(viewMode = intent.mode) }
@@ -87,6 +89,7 @@ class MainViewModel(
                 setState { copy(downloadDirectory = intent.path) }
             }
             MainIntent.ClearFinishedTransfers -> clearFinishedTransfers()
+            is MainIntent.DragOutFinished -> if (!intent.delivered) cancelDragOut(intent.request)
 
             MainIntent.ShowNewFolderDialog -> setState { copy(isNewFolderDialogVisible = true) }
             MainIntent.HideNewFolderDialog -> setState { copy(isNewFolderDialogVisible = false) }
@@ -114,20 +117,39 @@ class MainViewModel(
     }
 
     /**
-     * Bridge for dragging device files out to Finder. The OS drag system asks for real local
-     * files synchronously, so staging (adb pull into a temp folder) starts as soon as the drag
-     * begins and the platform layer awaits the result when Finder requests the data.
+     * Bridge for dragging device files out to Finder. The OS drag system needs real local files
+     * synchronously, so this returns a handle that pulls the files only when a drop target asks.
+     * The UI reports the end of the drag with [MainIntent.DragOutFinished].
      */
-    fun prepareDragOut(files: List<RemoteFile>): Deferred<List<String>> {
+    fun prepareDragOut(files: List<RemoteFile>): DragOutRequest {
         val serial = currentState.selectedSerial
-        // Default dispatcher: the drag system may block the UI thread while awaiting this.
-        return viewModelScope.async(Dispatchers.Default) {
-            if (serial == null) return@async emptyList()
-            files.mapNotNull { file ->
-                stageFileForDrag(serial, file.path)
-                    .onFailure { sendEffect(MainEffect.ShowMessage("Could not copy ${file.name}: ${it.message}")) }
-                    .getOrNull()
+        return DragOutRequest {
+            // Default dispatcher: the drag system blocks a UI thread while awaiting this.
+            viewModelScope.async(Dispatchers.Default) {
+                if (serial == null) return@async emptyList()
+                val staged = mutableListOf<StagedFile>()
+                try {
+                    files.forEach { file ->
+                        stageFileForDrag(serial, file.path)
+                            .onSuccess { staged += it }
+                            .onFailure { sendEffect(MainEffect.ShowMessage("Could not copy ${file.name}: ${it.message}")) }
+                    }
+                } catch (e: CancellationException) {
+                    discardStagedFiles(staged)
+                    throw e
+                }
+                staged
             }
+        }
+    }
+
+    private fun cancelDragOut(request: DragOutRequest) {
+        val staging = request.stagingOrNull ?: return // never started: nothing was pulled
+        // Still running: cancelling makes the staging coroutine clean up after itself.
+        staging.cancel()
+        // Already finished before the cancel: its result survives, so discard it here.
+        viewModelScope.launch {
+            runCatching { staging.await() }.getOrNull()?.let { discardStagedFiles(it) }
         }
     }
 
@@ -156,6 +178,8 @@ class MainViewModel(
                 currentPath = RemotePaths.DEFAULT_ROOT,
                 files = emptyList(),
                 selectedPaths = emptySet(),
+                focusedPath = null,
+                anchorPath = null,
                 error = null,
             )
         }
@@ -172,19 +196,17 @@ class MainViewModel(
                 isLoading = true,
                 error = null,
                 selectedPaths = if (keepSelection) selectedPaths else emptySet(),
+                focusedPath = if (keepSelection) focusedPath else null,
+                anchorPath = if (keepSelection) anchorPath else null,
                 files = if (path == currentPath) files else emptyList(),
             )
         }
         listJob = viewModelScope.launch {
-            listRemoteFiles(serial, path).fold(
+            val result = listRemoteFiles(serial, path)
+            ensureActive() // a newer refresh replaced this one: drop the stale result
+            result.fold(
                 onSuccess = { files ->
-                    setState {
-                        copy(
-                            files = files,
-                            isLoading = false,
-                            selectedPaths = selectedPaths.intersect(files.map { it.path }.toSet()),
-                        )
-                    }
+                    setState { SelectionReducer.retainExisting(copy(files = files, isLoading = false, error = null)) }
                 },
                 onFailure = { setState { copy(isLoading = false, files = emptyList(), error = it.message) } },
             )
@@ -213,7 +235,7 @@ class MainViewModel(
         viewModelScope.launch {
             renameRemoteFile(serial, target.path, newName).fold(
                 onSuccess = { newPath ->
-                    setState { copy(selectedPaths = setOf(newPath)) }
+                    setState { copy(selectedPaths = setOf(newPath), focusedPath = newPath, anchorPath = newPath) }
                     loadDirectory(currentState.currentPath, keepSelection = true)
                 },
                 onFailure = { sendEffect(MainEffect.ShowMessage("Could not rename ${target.name}: ${it.message}")) },

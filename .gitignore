@@ -9,3 +9,5 @@ captures
 !**/module.xcodeproj/project.xcworkspace/
 **/xcshareddata/WorkspaceSettings.xcsettings
 xcuserdata
+.idea/caches/
+.idea/workspace.xml

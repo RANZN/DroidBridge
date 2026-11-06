@@ -14,6 +14,10 @@ data class MainState(
     val currentPath: String = RemotePaths.DEFAULT_ROOT,
     val files: List<RemoteFile> = emptyList(),
     val selectedPaths: Set<String> = emptySet(),
+    /** Keyboard cursor; arrow keys move from here. */
+    val focusedPath: String? = null,
+    /** Start of a Shift range selection. */
+    val anchorPath: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val transfers: List<Transfer> = emptyList(),
@@ -53,9 +57,16 @@ sealed interface MainIntent {
     data class OpenDirectory(val path: String) : MainIntent
     data object NavigateUp : MainIntent
     data object Refresh : MainIntent
-    data class SelectFile(val path: String, val additive: Boolean) : MainIntent
+    data class SelectFile(val path: String, val mode: SelectionMode = SelectionMode.Replace) : MainIntent
     data object SelectAll : MainIntent
     data object ClearSelection : MainIntent
+
+    /** Arrow keys: [delta] is ±1, or ±columns for up/down in grid view. Shift sets [extend]. */
+    data class MoveFocus(val delta: Int, val extend: Boolean) : MainIntent
+    /** Home / End. */
+    data class MoveFocusToEdge(val toEnd: Boolean, val extend: Boolean) : MainIntent
+    /** Enter: open the focused folder. */
+    data object OpenFocused : MainIntent
     data class SetViewMode(val mode: FileViewMode) : MainIntent
 
     // Transfers
@@ -65,6 +76,11 @@ sealed interface MainIntent {
     data class Download(val paths: List<String>, val directory: String? = null) : MainIntent
     data class SetDownloadDirectory(val path: String) : MainIntent
     data object ClearFinishedTransfers : MainIntent
+    /**
+     * A drag out of the app ended. [delivered] is true only when another app (e.g. Finder)
+     * accepted the drop; otherwise any staged copy is discarded and nothing is recorded.
+     */
+    data class DragOutFinished(val request: DragOutRequest, val delivered: Boolean) : MainIntent
 
     // File management
     data object ShowNewFolderDialog : MainIntent
@@ -85,6 +101,9 @@ sealed interface MainIntent {
 
     data object DismissError : MainIntent
 }
+
+/** How a click changes the selection: plain, Cmd-click, Shift-click. */
+enum class SelectionMode { Replace, Toggle, Range }
 
 sealed interface MainEffect {
     data class ShowMessage(val message: String) : MainEffect

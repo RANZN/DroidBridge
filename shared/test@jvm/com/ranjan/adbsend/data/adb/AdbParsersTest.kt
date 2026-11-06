@@ -52,4 +52,24 @@ class AdbParsersTest {
     fun `quotes single quotes for the device shell`() {
         assertEquals("'it'\\''s here'", shellQuote("it's here"))
     }
+
+    @Test
+    fun `parses progress lines for files and folders`() {
+        assertEquals(AdbProgress(86, "/sdcard/Download/big.bin"), AdbParsers.parseProgress("[ 86%] /sdcard/Download/big.bin"))
+        assertEquals(AdbProgress(35, "/sdcard/Download/d/b.bin"), AdbParsers.parseProgress("[ 35%] /sdcard/Download/d/b.bin: 71%"))
+        assertEquals(AdbProgress(100, "/sdcard/x"), AdbParsers.parseProgress("[100%] /sdcard/x"))
+        assertEquals(null, AdbParsers.parseProgress("big.bin: 1 file pushed, 0 skipped."))
+    }
+
+    @Test
+    fun `cleans terminal escape codes and control characters`() {
+        assertEquals("[ 86%] /sdcard/a.bin", cleanTerminalOutput("\u0004\b\b[ 86%] /sdcard/a.bin\u001B[K"))
+        assertEquals("adb: error: cannot stat 'x'", cleanTerminalOutput("\u0004\b\badb: error: cannot stat 'x'"))
+    }
+
+    @Test
+    fun `error message prefers the adb error line over a summary`() {
+        val result = AdbResult(1, "a.txt: 1 file pushed, 0 skipped.\nadb: error: remote couldn't create file", "")
+        assertEquals("adb: error: remote couldn't create file", result.errorMessage)
+    }
 }

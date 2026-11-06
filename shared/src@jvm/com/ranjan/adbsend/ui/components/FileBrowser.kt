@@ -23,6 +23,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +61,7 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +79,14 @@ import androidx.compose.ui.draganddrop.dragData
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
@@ -87,12 +98,13 @@ import com.ranjan.adbsend.domain.model.RemoteFile
 import com.ranjan.adbsend.domain.usecase.RemotePaths
 import com.ranjan.adbsend.presentation.main.MainIntent
 import com.ranjan.adbsend.presentation.main.MainState
+import com.ranjan.adbsend.presentation.main.SelectionMode
 import com.ranjan.adbsend.ui.StagedFilesTransferable
 import com.ranjan.adbsend.ui.formatDate
 import com.ranjan.adbsend.ui.formatSize
 import com.ranjan.adbsend.ui.pickDirectory
 import com.ranjan.adbsend.ui.pickFiles
-import kotlinx.coroutines.Deferred
+import com.ranjan.adbsend.presentation.main.DragOutRequest
 import java.io.File
 import java.net.URI
 
@@ -107,12 +119,33 @@ import java.net.URI
 fun FileBrowser(
     state: MainState,
     onIntent: (MainIntent) -> Unit,
-    prepareDragOut: (List<RemoteFile>) -> Deferred<List<String>>,
+    prepareDragOut: (List<RemoteFile>) -> DragOutRequest,
     modifier: Modifier = Modifier,
 ) {
     var isDropHovering by remember { mutableStateOf(false) }
     // True while a drag that started in this window is in flight, so we never push our own files back.
     var isDraggingOut by remember { mutableStateOf(false) }
+    // Set by an item when it is pressed; the empty-area handler (which runs after the item's) checks it.
+    var itemPressed by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+
+    // Keep the keyboard cursor visible.
+    LaunchedEffect(state.focusedPath, state.viewMode) {
+        val index = state.files.indexOfFirst { it.path == state.focusedPath }
+        if (index < 0) return@LaunchedEffect
+        if (state.viewMode == FileViewMode.Grid) {
+            val visible = gridState.layoutInfo.visibleItemsInfo.map { it.index }
+            if (index !in visible.drop(1).dropLast(1)) gridState.scrollToItemIfNeeded(index, visible)
+        } else {
+            val listIndex = index + 1 // header row
+            val visible = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            if (listIndex !in visible.drop(1).dropLast(1)) listState.scrollToItemIfNeeded(listIndex, visible)
+        }
+    }
 
     val dropTarget = remember(onIntent) {
         object : DragAndDropTarget {
@@ -133,10 +166,15 @@ fun FileBrowser(
     val itemDragData: (RemoteFile, Boolean) -> DragAndDropTransferData = { file, selected ->
         val files = if (selected) state.selectedFiles else listOf(file)
         isDraggingOut = true
+        val request = prepareDragOut(files)
         DragAndDropTransferData(
-            transferable = DragAndDropTransferable(StagedFilesTransferable(prepareDragOut(files))),
+            transferable = DragAndDropTransferable(StagedFilesTransferable(request)),
             supportedActions = listOf(DragAndDropTransferAction.Copy),
-            onTransferCompleted = { isDraggingOut = false },
+            onTransferCompleted = { action ->
+                isDraggingOut = false
+                // null = cancelled or dropped back on this window (our drop target refuses it).
+                onIntent(MainIntent.DragOutFinished(request, delivered = action != null))
+            },
         )
     }
 
@@ -149,6 +187,20 @@ fun FileBrowser(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    val columns = if (state.viewMode == FileViewMode.Grid) gridState.layoutInfo.maxSpan else 1
+                    val intent = fileBrowserKeyIntent(event, state, columns) ?: return@onPreviewKeyEvent false
+                    onIntent(intent)
+                    true
+                }
+                .onPointerEvent(PointerEventType.Press) { event ->
+                    runCatching { focusRequester.requestFocus() }
+                    val isPlainClick = event.buttons.isPrimaryPressed && !event.keyboardModifiers.isCtrlPressed
+                    if (isPlainClick && !itemPressed) onIntent(MainIntent.ClearSelection)
+                    itemPressed = false
+                }
                 .dragAndDropTarget(
                     shouldStartDragAndDrop = { !isDraggingOut && it.dragData() is DragData.FilesList },
                     target = dropTarget,
@@ -166,19 +218,20 @@ fun FileBrowser(
                 )
                 state.viewMode == FileViewMode.Grid -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(116.dp),
+                    state = gridState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     items(state.files, key = { it.path }) { file ->
-                        FileItem(file, state, onIntent, itemDragData) { selected -> GridCell(file, selected) }
+                        FileItem(file, state, onIntent, itemDragData, onPressed = { itemPressed = true }) { selected -> GridCell(file, selected) }
                     }
                 }
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     item { HeaderRow() }
                     items(state.files, key = { it.path }) { file ->
-                        FileItem(file, state, onIntent, itemDragData) { selected -> ListRow(file, selected) }
+                        FileItem(file, state, onIntent, itemDragData, onPressed = { itemPressed = true }) { selected -> ListRow(file, selected) }
                     }
                 }
             }
@@ -197,13 +250,16 @@ private fun FileItem(
     state: MainState,
     onIntent: (MainIntent) -> Unit,
     dragData: (RemoteFile, Boolean) -> DragAndDropTransferData,
+    onPressed: () -> Unit,
     content: @Composable (selected: Boolean) -> Unit,
 ) {
     val windowInfo = LocalWindowInfo.current
     val selected = file.path in state.selectedPaths
+    val focused = file.path == state.focusedPath
     ContextMenuHost(
+        modifier = Modifier.onPointerEvent(PointerEventType.Press) { onPressed() },
         // Like Finder: right-clicking an unselected item selects it first.
-        onOpen = { if (!selected) onIntent(MainIntent.SelectFile(file.path, additive = false)) },
+        onOpen = { if (!selected) onIntent(MainIntent.SelectFile(file.path)) },
         menu = { ItemMenu(state.actionTargets(file), state, onIntent) },
     ) {
         Box(
@@ -212,11 +268,20 @@ private fun FileItem(
                 .combinedClickable(
                     onClick = {
                         val modifiers = windowInfo.keyboardModifiers
-                        onIntent(MainIntent.SelectFile(file.path, additive = modifiers.isMetaPressed || modifiers.isShiftPressed))
+                        val mode = when {
+                            modifiers.isShiftPressed -> SelectionMode.Range
+                            modifiers.isMetaPressed -> SelectionMode.Toggle
+                            else -> SelectionMode.Replace
+                        }
+                        onIntent(MainIntent.SelectFile(file.path, mode))
                     },
                     onDoubleClick = {
                         if (file.isDirectory) onIntent(MainIntent.OpenDirectory(file.path))
                     },
+                )
+                .then(
+                    if (focused) Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                    else Modifier
                 )
         ) {
             content(selected)
@@ -455,9 +520,21 @@ private fun HintBar() {
         horizontalArrangement = Arrangement.Center,
     ) {
         Text(
-            "Drag from Finder to copy to the device  |  Drag out to Finder to copy to this Mac  |  Right-click for more options",
+            "Drag in from Finder to upload  |  Drag out to Finder to download  |  Shift+arrows to select  |  Right-click for more",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+private suspend fun androidx.compose.foundation.lazy.LazyListState.scrollToItemIfNeeded(index: Int, visible: List<Int>) {
+    val first = visible.firstOrNull() ?: return scrollToItem(index)
+    // Moving down: keep the item at the bottom edge; moving up: at the top.
+    if (index > first) scrollToItem((index - visible.size + 2).coerceAtLeast(0)) else scrollToItem(index)
+}
+
+private suspend fun androidx.compose.foundation.lazy.grid.LazyGridState.scrollToItemIfNeeded(index: Int, visible: List<Int>) {
+    val first = visible.firstOrNull() ?: return scrollToItem(index)
+    val columns = layoutInfo.maxSpan.coerceAtLeast(1)
+    if (index > first) scrollToItem((index - visible.size + 2 * columns).coerceAtLeast(0)) else scrollToItem(index)
 }

@@ -1,6 +1,7 @@
 package com.ranjan.adbsend.domain.usecase
 
 import com.ranjan.adbsend.domain.model.RemoteFile
+import com.ranjan.adbsend.domain.util.runSuspendCatching
 import com.ranjan.adbsend.domain.repository.FileRepository
 
 class ListRemoteFilesUseCase(private val repository: FileRepository) {
@@ -22,7 +23,7 @@ class CreateRemoteFolderUseCase(private val repository: FileRepository) {
 }
 
 class DeleteRemoteFilesUseCase(private val repository: FileRepository) {
-    suspend operator fun invoke(serial: String, paths: List<String>): Result<Unit> = runCatching {
+    suspend operator fun invoke(serial: String, paths: List<String>): Result<Unit> = runSuspendCatching {
         paths.forEach { path ->
             require(path !in RemotePaths.protectedPaths) { "Refusing to delete $path" }
             repository.delete(serial, path).getOrThrow()

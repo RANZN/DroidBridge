@@ -1,10 +1,14 @@
 package com.ranjan.adbsend.data.repository
 
 import com.ranjan.adbsend.data.adb.AdbClient
+import com.ranjan.adbsend.data.adb.AdbParsers
+import com.ranjan.adbsend.data.adb.shellQuote
+import com.ranjan.adbsend.domain.model.StagedFile
 import com.ranjan.adbsend.domain.model.Transfer
 import com.ranjan.adbsend.domain.model.TransferDirection
 import com.ranjan.adbsend.domain.model.TransferStatus
 import com.ranjan.adbsend.domain.repository.TransferRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,15 +51,33 @@ class AdbTransferRepository(
         }
     }
 
-    override suspend fun stageForDrag(serial: String, remotePath: String): Result<String> {
+    override suspend fun stageForDrag(serial: String, remotePath: String): Result<StagedFile> {
         val dir = File(stagingRoot, UUID.randomUUID().toString()).apply { mkdirs() }
         val transfer = newTransfer(serial, TransferDirection.Pull, remotePath, "Finder (drag)")
-        execute(transfer, listOf("-s", serial, "pull", remotePath, dir.absolutePath))
-        val status = _transfers.value.first { it.id == transfer.id }.status
+        val staged = StagedFile(transfer.id, File(dir, remotePath.trimEnd('/').substringAfterLast('/')).absolutePath)
+        try {
+            execute(transfer, listOf("-s", serial, "pull", remotePath, dir.absolutePath))
+        } catch (e: CancellationException) {
+            // Drag was cancelled or dropped back on the app: leave no trace.
+            discardStaged(listOf(staged))
+            throw e
+        }
+        val status = _transfers.value.firstOrNull { it.id == transfer.id }?.status
         return if (status is TransferStatus.Failed) {
             Result.failure(IllegalStateException(status.reason))
         } else {
-            Result.success(File(dir, remotePath.trimEnd('/').substringAfterLast('/')).absolutePath)
+            Result.success(staged)
+        }
+    }
+
+    override fun discardStaged(files: List<StagedFile>) {
+        val ids = files.map { it.transferId }.toSet()
+        _transfers.update { list -> list.filterNot { it.id in ids } }
+        val root = stagingRoot.canonicalFile
+        files.forEach { file ->
+            // Each staged file lives in its own random folder directly under the staging root.
+            val folder = File(file.localPath).canonicalFile.parentFile ?: return@forEach
+            if (folder.parentFile == root) folder.deleteRecursively()
         }
     }
 
@@ -97,7 +119,28 @@ class AdbTransferRepository(
     private suspend fun execute(transfer: Transfer, command: List<String>) {
         deviceLocks.getOrPut(transfer.deviceSerial) { Mutex() }.withLock {
             setStatus(transfer.id, TransferStatus.Running)
-            val status = runCatching { adb.run(command) }.fold(
+            if (transfer.direction == TransferDirection.Push) {
+                // adb push into a missing folder fails, e.g. if it was deleted on the device meanwhile.
+                runCatching { adb.shell(transfer.deviceSerial, "mkdir -p ${shellQuote(transfer.destination)}") }
+                    .onFailure { if (it is CancellationException) throw it }
+            }
+            var lastPercent = -1
+            val status = try {
+                Result.success(
+                    adb.runStreaming(command) { line ->
+                        val progress = AdbParsers.parseProgress(line) ?: return@runStreaming
+                        if (progress.percent == lastPercent) return@runStreaming // avoid flooding the UI
+                        lastPercent = progress.percent
+                        updateTransfer(transfer.id) {
+                            it.copy(progressPercent = progress.percent, currentItem = progress.item.substringAfterLast('/'))
+                        }
+                    }
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }.fold(
                 onSuccess = { result ->
                     if (result.isSuccess) {
                         TransferStatus.Completed(
@@ -113,7 +156,14 @@ class AdbTransferRepository(
         }
     }
 
-    private fun setStatus(id: Long, status: TransferStatus) {
-        _transfers.update { list -> list.map { if (it.id == id) it.copy(status = status) else it } }
+    private fun setStatus(id: Long, status: TransferStatus) = updateTransfer(id) {
+        it.copy(
+            status = status,
+            progressPercent = if (status is TransferStatus.Completed) 100 else it.progressPercent,
+        )
+    }
+
+    private fun updateTransfer(id: Long, change: (Transfer) -> Transfer) {
+        _transfers.update { list -> list.map { if (it.id == id) change(it) else it } }
     }
 }

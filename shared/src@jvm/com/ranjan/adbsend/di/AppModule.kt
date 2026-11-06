@@ -13,6 +13,7 @@ import com.ranjan.adbsend.domain.repository.TransferRepository
 import com.ranjan.adbsend.domain.usecase.ClearFinishedTransfersUseCase
 import com.ranjan.adbsend.domain.usecase.CreateRemoteFolderUseCase
 import com.ranjan.adbsend.domain.usecase.DeleteRemoteFilesUseCase
+import com.ranjan.adbsend.domain.usecase.DiscardStagedFilesUseCase
 import com.ranjan.adbsend.domain.usecase.DownloadDirectoryUseCase
 import com.ranjan.adbsend.domain.usecase.FileViewModeUseCase
 import com.ranjan.adbsend.domain.usecase.RenameRemoteFileUseCase
@@ -58,6 +59,7 @@ val domainModule = module {
     factoryOf(::PushFilesUseCase)
     factoryOf(::PullFilesUseCase)
     factoryOf(::StageFileForDragUseCase)
+    factoryOf(::DiscardStagedFilesUseCase)
     factoryOf(::ClearFinishedTransfersUseCase)
     factoryOf(::SetupGuidePreferenceUseCase)
     factoryOf(::DownloadDirectoryUseCase)
