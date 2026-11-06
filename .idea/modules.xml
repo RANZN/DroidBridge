@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/ADBsend.iml" filepath="$PROJECT_DIR$/.idea/ADBsend.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/DroidBridge.iml" filepath="$PROJECT_DIR$/.idea/DroidBridge.iml" />
     </modules>
   </component>
 </project>

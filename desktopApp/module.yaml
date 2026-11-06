@@ -10,4 +10,4 @@ dependencies:
 settings:
   compose: enabled
   jvm:
-    mainClass: com.ranjan.adbsend.MainKt
+    mainClass: com.ranjan.droidbridge.MainKt

@@ -18,6 +18,9 @@ dependencies:
   - $libs.koin.compose.viewmodel
   - $libs.material.icons.extended
 
+dependencies@jvm:
+  - $libs.jna
+
 test-dependencies:
   - $libs.kotlinx.coroutines.test
 
@@ -25,5 +28,5 @@ settings:
   compose:
     enabled: true
     resources:
-      packageName: com.ranjan.adbsend.resources
+      packageName: com.ranjan.droidbridge.resources
       exposedAccessors: true
