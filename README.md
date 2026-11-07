@@ -68,14 +68,48 @@ You only need one of the two.
    - **Apple Silicon (M1 or newer):** `DroidBridge-<version>-macos-arm64.pkg`
    - **Intel:** `DroidBridge-<version>-macos-x64.pkg`
 
-   Not sure which one? Apple menu > About This Mac. "Chip: Apple M..." means Apple Silicon.
-3. Double-click the `.pkg` file and click **Install**. DroidBridge appears in your Applications folder.
+   Not sure which one? Open the Apple menu > **About This Mac**. "Chip: Apple M..." means Apple Silicon. "Processor: Intel" means Intel.
+3. Double-click the `.pkg` file. The first time, macOS blocks it - follow **Allow DroidBridge to open** below, then double-click it again.
+4. Click **Continue**, then **Install**, and enter your Mac password. DroidBridge appears in your Applications folder.
 
-Prefer not to use an installer? Download the `.dmg` instead, open it and drag DroidBridge into Applications.
-
-**First launch:** DroidBridge is not yet signed with an Apple Developer ID, so macOS may say it cannot verify the developer. Right-click DroidBridge in Applications and choose **Open**, or go to **System Settings > Privacy & Security** and click **Open Anyway**. You only need to do this once.
+Prefer not to use an installer? Download the `.dmg` instead, open it and drag DroidBridge into the Applications folder. With the `.dmg`, macOS blocks the app itself the first time you open it, so follow the steps below for the app.
 
 DroidBridge includes everything it needs to run, so you do not need to install Java.
+
+### Allow DroidBridge to open (one time only)
+
+DroidBridge is free and is not signed with a paid Apple Developer ID, so the first time you open it macOS shows a message such as **"DroidBridge" Not Opened** or **"Apple could not verify DroidBridge is free of malware"**. This is expected. You only need to allow it once.
+
+**macOS 15 Sequoia and newer**
+
+1. Double-click the installer (or the app). When the warning appears, click **Done**. Do not click Move to Trash.
+2. Open the Apple menu > **System Settings** > **Privacy & Security**.
+3. Scroll down to the **Security** section. You will see *"DroidBridge... was blocked to protect your Mac"*.
+4. Click **Open Anyway** and enter your Mac password (or use Touch ID).
+5. In the message that appears, click **Open Anyway** again.
+
+The **Open Anyway** button only shows for about an hour after the warning. If you do not see it, double-click the installer or app again and go back to Privacy & Security.
+
+**macOS 14 Sonoma and older**
+
+1. In Finder, right-click (or Control-click) the installer or the app and choose **Open**.
+2. In the message that appears, click **Open**.
+
+**Prefer Terminal?**
+
+If you installed from the `.dmg` and have dragged DroidBridge into Applications, this command does the same thing in one step:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/DroidBridge.app
+```
+
+**Is this safe?** The warning means Apple has not reviewed the app, not that anything is wrong with it. DroidBridge is open source - the code is all on this page, and every installer is built from it automatically on GitHub. Each download has a matching `.sha256` file if you want to check the file has not been changed:
+
+```bash
+shasum -a 256 ~/Downloads/DroidBridge-*.pkg
+```
+
+The result should match the text in the `.sha256` file from the same release.
 
 ### 2. Connect your phone
 
@@ -111,6 +145,12 @@ If MTP has not connected after a minute, DroidBridge suggests switching to USB d
 | Wi-Fi and emulators | Yes | No, USB only |
 
 ## Common questions
+
+**macOS says DroidBridge cannot be opened or could not be verified.**
+This is expected the first time. Follow [Allow DroidBridge to open](#allow-droidbridge-to-open-one-time-only) above - it only takes a minute and you only do it once.
+
+**macOS says DroidBridge "is damaged and can't be opened".**
+The download is fine - this is the same block with a different message. Drag DroidBridge into Applications, then run the Terminal command in [Allow DroidBridge to open](#allow-droidbridge-to-open-one-time-only).
 
 **My phone does not appear.**
 Check that the cable supports data, that the phone is unlocked, and (for ADB) that you tapped Allow on the USB debugging prompt. Try another USB port, or unplug and reconnect.
